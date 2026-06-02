@@ -17,6 +17,27 @@ import { MARKDOWN_COMPONENTS } from '@ui/Markdown'
 
 const { Text } = Typography
 
+// 从 LLM 输出中提取评分
+function extractScore(text: string): number | null {
+  const patterns = [
+    /(\d{1,3})\s*\/\s*100/,
+    /评分[：:]\s*(\d{1,3})/,
+    /评分[（(]\s*(\d{1,3})\s*\/\s*100/,
+    /(\d{1,3})\s*分/,
+  ]
+  for (const re of patterns) {
+    const m = text.match(re)
+    if (m) return parseInt(m[1])
+  }
+  return null
+}
+
+const AGENT_COLORS: Record<string, string> = {
+  security: '#ff4d4f',
+  performance: '#faad14',
+  style: '#1890ff',
+}
+
 // ---- 主组件 ------------------------------------------------------------------
 
 export default function StreamReview() {
@@ -232,6 +253,16 @@ export default function StreamReview() {
               <div ref={resultRef} style={{ flex: 1, overflow: 'auto', padding: '16px 24px', background: '#fefefe' }}>
                 {agentResults[agentTab] ? (
                   <div className="stream-markdown-body">
+                    {extractScore(agentResults[agentTab]) !== null && (
+                      <div style={{
+                        background: AGENT_COLORS[agentTab] || '#666',
+                        color: '#fff', padding: '8px 16px', borderRadius: 6,
+                        marginBottom: 16, fontWeight: 600, fontSize: 16,
+                        textAlign: 'center',
+                      }}>
+                        {agentTab === 'security' ? '🛡 安全' : agentTab === 'performance' ? '⚡ 性能' : '📐 规范'}评分：{extractScore(agentResults[agentTab])}/100
+                      </div>
+                    )}
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                       {agentResults[agentTab]}
                     </ReactMarkdown>
