@@ -253,14 +253,11 @@ async def seed():
             await db.refresh(project)
             print(f"✅ 创建项目: {project.name}")
 
-        # 获取 reviewer 用户
+        # 获取 reviewer 用户（取第一个 admin）
         user_result = await db.execute(
-            select(User).where(User.role == UserRole.ADMIN)
+            select(User).where(User.role == UserRole.ADMIN).limit(1)
         )
-        reviewer = user_result.scalar_one_or_none()
-        if not reviewer:
-            user_result = await db.execute(select(User).limit(1))
-            reviewer = user_result.scalar_one_or_none()
+        reviewer = user_result.scalar()
 
         if not reviewer:
             print("❌ 无用户")

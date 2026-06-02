@@ -6,6 +6,7 @@ import ReviewDetail from "./pages/ReviewDetail";
 import RAGPage from "./pages/RAGPage";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import CICDMonitor from "./pages/CICDMonitor";
 import MainLayout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import StreamReview from "./pages/StreamReview";
@@ -55,6 +56,10 @@ function App() {
           <Route
             path="/admin"
             element={token ? <Admin /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/cicd"
+            element={token ? <CICDMonitor /> : <Navigate to="/login" />}
           />
         </Route>
         <Route path="*" element={<Navigate to="/projects" />} />

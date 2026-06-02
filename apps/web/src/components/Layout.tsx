@@ -15,6 +15,7 @@ import {
   DatabaseOutlined,
   SettingOutlined,
   CrownOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
 import { useAuthStore } from "../stores/auth";
@@ -44,6 +45,7 @@ export default function MainLayout() {
     { key: "/stream-review", icon: <ThunderboltOutlined />, label: "流式审查" },
     { key: "/rag", icon: <DatabaseOutlined />, label: "知识库" },
     { key: "/settings", icon: <SettingOutlined />, label: "个人设置" },
+    { key: "/cicd", icon: <SyncOutlined />, label: "CI/CD 监控" },
     ...(user?.role === "ADMIN"
       ? [{ key: "/admin", icon: <CrownOutlined />, label: "用户管理" }]
       : []),
