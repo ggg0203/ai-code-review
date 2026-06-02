@@ -64,7 +64,8 @@ async def get_ci_status(
         "Accept": "application/vnd.github+json",
     }
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
         # 1. 获取最近 5 次 workflow runs
         runs_resp = await client.get(
             f"{GITHUB_API}/repos/{REPO}/actions/runs?per_page=5",
@@ -187,3 +188,5 @@ async def get_ci_status(
         total_runs=total,
         builds=builds,
     )
+    except Exception:
+        return CIStatusResponse(success_rate=0, avg_duration="N/A", total_runs=0, builds=[])
