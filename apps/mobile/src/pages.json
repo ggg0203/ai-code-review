@@ -1,0 +1,53 @@
+{
+  "pages": [
+    {
+      "path": "pages/tabs/dashboard/index",
+      "style": { "navigationBarTitleText": "首页" }
+    },
+    {
+      "path": "pages/tabs/projects/index",
+      "style": { "navigationBarTitleText": "项目管理" }
+    },
+    {
+      "path": "pages/tabs/ai-review/index",
+      "style": { "navigationBarTitleText": "AI 审查" }
+    },
+    {
+      "path": "pages/tabs/reviews/index",
+      "style": { "navigationBarTitleText": "审查记录" }
+    },
+    {
+      "path": "pages/tabs/profile/index",
+      "style": { "navigationBarTitleText": "我的" }
+    },
+    {
+      "path": "pages/rag/index",
+      "style": { "navigationBarTitleText": "知识库" }
+    },
+    {
+      "path": "pages/index/index",
+      "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/register/index",
+      "style": { "navigationBarTitleText": "注册", "navigationStyle": "custom" }
+    }
+  ],
+  "tabBar": {
+    "color": "#999",
+    "selectedColor": "#1677ff",
+    "list": [
+      { "pagePath": "pages/tabs/dashboard/index", "text": "首页", "iconPath": "", "selectedIconPath": "" },
+      { "pagePath": "pages/tabs/projects/index", "text": "项目", "iconPath": "", "selectedIconPath": "" },
+      { "pagePath": "pages/tabs/ai-review/index", "text": "AI审查", "iconPath": "", "selectedIconPath": "" },
+      { "pagePath": "pages/tabs/reviews/index", "text": "审查", "iconPath": "", "selectedIconPath": "" },
+      { "pagePath": "pages/tabs/profile/index", "text": "我的", "iconPath": "", "selectedIconPath": "" }
+    ]
+  },
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "AI Code Review",
+    "navigationBarBackgroundColor": "#1677ff",
+    "backgroundColor": "#f5f5f5"
+  }
+}

@@ -1,0 +1,39 @@
+# ============ Web 框架 ============
+fastapi==0.111.0
+# FastAPI 核心，用于创建 API 接口
+
+uvicorn[standard]==0.30.1
+# ASGI 服务器，用于运行 FastAPI 应用（支持异步、WebSocket）
+
+# ============ 数据库 ============
+sqlalchemy==2.0.36
+# ORM 框架，用 Python 类操作数据库，不用写 SQL
+# 2.0.36+ 兼容 Python 3.13
+
+psycopg[binary]==3.3.4
+# PostgreSQL 驱动（预编译版，不需要 C 编译器）
+# 替代 asyncpg，3.3.x 有 cp313 的 wheel
+
+# ============ 缓存 ============
+redis==5.0.7
+# Redis Python 客户端，用于缓存、会话管理、限流
+
+# ============ 认证 ============
+python-jose[cryptography]==3.3.0
+# JWT（JSON Web Token）库，用于生成和验证 Token
+
+passlib[bcrypt]==1.7.4
+# 密码哈希库，用于加密存储用户密码
+
+# ============ 配置管理 ============
+pydantic-settings==2.7.0
+# 从 .env 文件读取配置（pydantic 扩展）
+
+# ============ 其他 ============
+python-multipart==0.0.9
+# 文件上传支持（头像、代码文件等）
+
+httpx==0.27.0
+# HTTP 异步客户端，调用外部 API（阿里云百炼、GitHub API 等）
+
+# 注意：pydantic 由 fastapi 自动安装，不需要单独指定版本
