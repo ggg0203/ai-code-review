@@ -237,6 +237,7 @@ export default function StreamReview() {
                   { key: 'security', label: '🔴 安全Agent', icon: '🛡' },
                   { key: 'performance', label: '🟡 性能Agent', icon: '⚡' },
                   { key: 'style', label: '🔵 规范Agent', icon: '📐' },
+                  { key: 'summary', label: '📊 综合报告', icon: '📋' },
                 ].map(a => (
                   <Button
                     key={a.key}
@@ -251,7 +252,40 @@ export default function StreamReview() {
                 ))}
               </div>
               <div ref={resultRef} style={{ flex: 1, overflow: 'auto', padding: '16px 24px', background: '#fefefe' }}>
-                {agentResults[agentTab] ? (
+                {agentTab === 'summary' ? (
+                  /* ---- 综合报告 ---- */
+                  <div>
+                    <div style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: '#fff', padding: '16px 24px', borderRadius: 8, marginBottom: 20, textAlign: 'center',
+                    }}>
+                      <div style={{ fontSize: 18, fontWeight: 700 }}>📊 综合评估报告</div>
+                      {(() => {
+                        const scores = ['security', 'performance', 'style'].map(k => extractScore(agentResults[k] || '')).filter(Boolean) as number[]
+                        const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
+                        return <div style={{ fontSize: 28, fontWeight: 800, marginTop: 8 }}>{avg}/100</div>
+                      })()}
+                    </div>
+                    {['security', 'performance', 'style'].map(key => {
+                      const content = agentResults[key]
+                      if (!content) return null
+                      const score = extractScore(content)
+                      return (
+                        <div key={key} style={{ marginBottom: 20, border: `2px solid ${AGENT_COLORS[key]}`, borderRadius: 8, overflow: 'hidden' }}>
+                          <div style={{ background: AGENT_COLORS[key], color: '#fff', padding: '6px 16px', fontWeight: 600 }}>
+                            {key === 'security' ? '🔴 安全 Agent' : key === 'performance' ? '🟡 性能 Agent' : '🔵 规范 Agent'}
+                            {score !== null && <span style={{ float: 'right' }}>{score}/100</span>}
+                          </div>
+                          <div style={{ padding: '12px 16px', maxHeight: 300, overflow: 'auto' }}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                              {content}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : agentResults[agentTab] ? (
                   <div className="stream-markdown-body">
                     {extractScore(agentResults[agentTab]) !== null && (
                       <div style={{
