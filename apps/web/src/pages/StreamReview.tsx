@@ -27,7 +27,13 @@ export default function StreamReview() {
   const [agentLoading, setAgentLoading] = useState(false)
   const [agentTab, setAgentTab] = useState<string>('security')
   const { streamResult: rawResult, streaming: loading, setStreamResult, setStreaming } = useStreamStore()
+  const [isCached, setIsCached] = useState(false)
   const resultRef = useRef<HTMLDivElement>(null)
+
+  // 组件挂载时检测是否有缓存结果
+  useEffect(() => {
+    if (rawResult) setIsCached(true)
+  }, [])
 
   // 自动滚动到底部
   useEffect(() => {
@@ -39,6 +45,7 @@ export default function StreamReview() {
   // 累积流式内容
   const handleReview = async () => {
     if (!code.trim()) return
+    setIsCached(false)
     setStreaming(true)
     setStreamResult(() => '')
 
@@ -157,14 +164,16 @@ export default function StreamReview() {
             { value: 'multi', label: '多 Agent 协作' },
           ]}
         />
-        <Editor
-          height="100%"
-          language={language.toLowerCase()}
-          value={code}
-          onChange={(val) => setCode(val || '')}
-          theme="vs-dark"
-          options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: 'on', scrollBeyondLastLine: false }}
-        />
+        <div style={{ flex: 1, minHeight: 0, marginTop: 8 }}>
+          <Editor
+            height="100%"
+            language={language.toLowerCase()}
+            value={code}
+            onChange={(val) => setCode(val || '')}
+            theme="vs-dark"
+            options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: 'on', scrollBeyondLastLine: false }}
+          />
+        </div>
         <Button
           type="primary"
           icon={mode === 'multi' ? <TeamOutlined /> : <ThunderboltOutlined />}
@@ -247,7 +256,13 @@ export default function StreamReview() {
             </div>
           ) : rawResult ? (
             /* ---- 单次审查 react-markdown ---- */
-            <div className="stream-markdown-body">
+            <>
+              {isCached && (
+                <div style={{ background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 6, padding: '6px 12px', marginBottom: 12, fontSize: 12, color: '#ad6800' }}>
+                  📋 上次审查结果（切换页面已保留）
+                </div>
+              )}
+              <div className="stream-markdown-body">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={MARKDOWN_COMPONENTS}
@@ -255,6 +270,7 @@ export default function StreamReview() {
                 {rawResult}
               </ReactMarkdown>
             </div>
+            </>
           ) : (
             /* 空状态 */
             <div style={{ textAlign: 'center', marginTop: 80 }}>
