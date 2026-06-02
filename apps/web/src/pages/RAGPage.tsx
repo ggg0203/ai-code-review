@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import {
-  Card, Tabs, Form, Input, Button, message, Typography, Spin, Space, Tag, Empty,
+  Card, Tabs, Form, Input, Button, message, Typography, Spin, Space, Tag, Empty, Segmented,
 } from "antd";
 import {
   PlusOutlined, SearchOutlined, DatabaseOutlined, QuestionCircleOutlined,
@@ -26,6 +26,7 @@ export default function RAGPage() {
   const [adding, setAdding] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState("");
+  const [ragMode, setRagMode] = useState<"normal" | "agent">("normal");
   const [addForm] = Form.useForm();
   const [askForm] = Form.useForm();
 
@@ -46,12 +47,13 @@ export default function RAGPage() {
     }
   };
 
-  /** RAG 智能问答 */
+  /** RAG 智能问答（普通/Agent 模式） */
   const handleAsk = async (values: { question: string }) => {
     setAsking(true);
     setAnswer("");
     try {
-      const res = await client.post("/rag/ask", {
+      const endpoint = ragMode === "agent" ? "/rag/agent" : "/rag/ask";
+      const res = await client.post(endpoint, {
         question: values.question,
         top_k: 3,
       });
@@ -85,6 +87,16 @@ export default function RAGPage() {
             ),
             children: (
               <Card>
+                <Segmented
+                  value={ragMode}
+                  onChange={(v) => setRagMode(v as "normal" | "agent")}
+                  options={[
+                    { value: "normal", label: "普通问答" },
+                    { value: "agent", label: "🔍 ReAct Agent" },
+                  ]}
+                  style={{ marginBottom: 16 }}
+                  block
+                />
                 <Form form={askForm} layout="vertical" onFinish={handleAsk}>
                   <Form.Item
                     name="question"
