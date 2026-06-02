@@ -53,13 +53,11 @@ export default function RAGPage() {
     setAnswer("");
     try {
       const endpoint = ragMode === "agent" ? "/rag/agent" : "/rag/ask";
-      const res = await client.post(endpoint, {
-        question: values.question,
-        top_k: 3,
-      });
+      const timeout = ragMode === "agent" ? 60000 : 15000;
+      const res = await client.post(endpoint, { question: values.question, top_k: 3 }, { timeout });
       setAnswer(res.data.answer);
-    } catch {
-      message.error("问答失败，请检查 AI 服务");
+    } catch (err: any) {
+      message.error(err?.message === "canceled" ? "请求超时，Agent 分析时间较长请重试" : "问答失败，请检查 AI 服务");
     } finally {
       setAsking(false);
     }
