@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ===== Python 后端语法检查 =====
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile main.py
+          python -m py_compile app/core/config.py
+          python -m py_compile app/core/database.py
+          python -m py_compile app/core/security.py
+          python -m py_compile app/core/cache.py
+          python -m py_compile app/models/user.py
+          python -m py_compile app/models/project.py
+          python -m py_compile app/models/review.py
+          python -m py_compile app/api/auth.py
+          python -m py_compile app/api/projects.py
+          python -m py_compile app/api/reviews.py
+          python -m py_compile app/api/ai.py
+          python -m py_compile app/api/rag.py
+          python -m py_compile app/api/stats.py
+          python -m py_compile app/ai/reviewer.py
+          python -m py_compile app/ai/rag.py
+          echo "✅ All Python files pass syntax check"
+
+  # ===== Web 前端 TypeScript 检查 =====
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+  # ===== 3D 大屏 TypeScript 检查 =====
+  screen:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/screen
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
