@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "paths": {
       "@shared/*": ["../../packages/shared/*"],
-      "@ui/*": ["../../packages/ui/*"]
+      "@ui/*": ["./src/components/shared/*"]
     },
 
     /* Bundler mode */

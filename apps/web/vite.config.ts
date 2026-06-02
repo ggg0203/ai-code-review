@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@shared": resolve(__dirname, "../../packages/shared"),
-      "@ui": resolve(__dirname, "../../packages/ui"),
+      "@ui": resolve(__dirname, "src/components/shared"),
     },
   },
   server: {
