@@ -6,11 +6,12 @@
  * 2. 前端用 react-markdown 实时渲染，即使 Markdown 不完整也能正常显示
  * 3. 自定义组件/样式突出严重程度标签、代码块、评分表格等
  */
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Input, Button, Card, Select, Typography, Space, Tag } from 'antd'
 import { ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useStreamStore } from '../stores/stream'
 
 const { TextArea } = Input
 const { Text } = Typography
@@ -192,8 +193,7 @@ function StrongRenderer({ children, ...props }: any) {
 export default function StreamReview() {
   const [code, setCode] = useState('')
   const [language, setLanguage] = useState('Python')
-  const [loading, setLoading] = useState(false)
-  const [rawResult, setRawResult] = useState('')  // 原始 Markdown 文本（用于传给 react-markdown）
+  const { streamResult: rawResult, streaming: loading, setStreamResult, setStreaming } = useStreamStore()
   const resultRef = useRef<HTMLDivElement>(null)
 
   // 自动滚动到底部
@@ -206,8 +206,8 @@ export default function StreamReview() {
   // 累积流式内容
   const handleReview = async () => {
     if (!code.trim()) return
-    setLoading(true)
-    setRawResult('')
+    setStreaming(true)
+    setStreamResult(() => '')
 
     try {
       const token = localStorage.getItem('access_token')
@@ -237,22 +237,22 @@ export default function StreamReview() {
             const data = line.slice(6)
             if (data === '[DONE]') continue
             if (data.startsWith('[ERROR]')) {
-              setRawResult(prev => prev + `\n\n> ❌ **错误：** ${data.slice(8)}`)
+              setStreamResult(prev => prev + `\n\n> ❌ **错误：** ${data.slice(8)}`)
               continue
             }
             // 后端已 JSON 编码，解码后直接拼接
             try {
-              setRawResult(prev => prev + JSON.parse(data))
+              setStreamResult(prev => prev + JSON.parse(data))
             } catch {
-              setRawResult(prev => prev + data)
+              setStreamResult(prev => prev + data)
             }
           }
         }
       }
     } catch (err: any) {
-      setRawResult(prev => prev + '\n\n> ❌ **连接失败，请检查网络后重试**')
+      setStreamResult(prev => prev + '\n\n> ❌ **连接失败，请检查网络后重试**')
     } finally {
-      setLoading(false)
+      setStreaming(false)
     }
   }
 

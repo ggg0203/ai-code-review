@@ -20,6 +20,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import client from "../api/client";
+import { useStreamStore } from "../stores/stream";
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -154,8 +155,7 @@ export default function ReviewDetail() {
 
   const [review, setReview] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [streamResult, setStreamResult] = useState(""); // 流式分析时的实时内容
+  const { detailResult: streamResult, streaming: analyzing, setDetailResult, setStreaming } = useStreamStore();
 
   /** 加载审查详情 */
   const fetchReview = useCallback(async () => {
@@ -187,8 +187,8 @@ export default function ReviewDetail() {
       return;
     }
 
-    setAnalyzing(true);
-    setStreamResult("");
+    setStreaming(true);
+    setDetailResult(() => "");
 
     try {
       const token = localStorage.getItem("access_token");
@@ -212,7 +212,7 @@ export default function ReviewDetail() {
         } else {
           message.error(errMsg);
         }
-        setAnalyzing(false);
+        setStreaming(false);
         return;
       }
 
@@ -233,19 +233,19 @@ export default function ReviewDetail() {
             if (data === "[DONE]") {
               message.success("AI 分析完成，结果已保存");
               await fetchReview(); // 重新加载完整数据
-              setStreamResult("");
-              setAnalyzing(false);
+              setDetailResult(() => "");
+              setStreaming(false);
               return;
             }
             if (data.startsWith("[ERROR]")) {
               message.error(`分析失败：${data.slice(8)}`);
-              setAnalyzing(false);
+              setStreaming(false);
               return;
             }
             try {
-              setStreamResult(prev => prev + JSON.parse(data));
+              setDetailResult(prev => prev + JSON.parse(data));
             } catch {
-              setStreamResult(prev => prev + data);
+              setDetailResult(prev => prev + data);
             }
           }
         }
@@ -256,8 +256,8 @@ export default function ReviewDetail() {
     } catch {
       message.error("网络错误，请重试");
     } finally {
-      setStreamResult("");
-      setAnalyzing(false);
+      setDetailResult(() => "");
+      setStreaming(false);
     }
   };
 
