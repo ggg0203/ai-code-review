@@ -23,6 +23,7 @@ from app.api.reviews import router as reviews_router
 from app.api.ai import router as ai_router
 from app.api.rag import router as rag_router
 from app.api.stats import router as stats_router
+from app.api.ci import router as ci_router
 from app.ai.rag import init_collection
 
 # ========== 2. 生命周期管理（必须在 app 创建前定义） ==========
@@ -92,6 +93,7 @@ app.include_router(reviews_router)
 app.include_router(ai_router)
 app.include_router(rag_router)
 app.include_router(stats_router)
+app.include_router(ci_router)
 
 # ========== 5. 定义路由（API 接口） ==========
 

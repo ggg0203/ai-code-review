@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     DASHSCOPE_API_KEY: str = ""
     # 阿里云百炼 API Key（接入 AI 功能时填写）
 
+    # ========== GitHub 配置 ==========
+    GITHUB_TOKEN: str = ""
+    # GitHub Personal Access Token（用于 CI/CD 监控等）
+
     # ========== pydantic-settings 配置 ==========
     class Config:
         env_file = ".env"          # 指定 .env 文件路径
