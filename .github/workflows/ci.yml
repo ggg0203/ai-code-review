@@ -83,3 +83,25 @@ jobs:
 
       - name: TypeScript type check
         run: npx tsc --noEmit
+
+  # ===== 自动部署到阿里云 ECS =====
+  deploy:
+    needs: [backend, web, screen]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            if [ -d /root/ai-code-review ]; then
+              cd /root/ai-code-review && git pull origin main
+            else
+              git clone https://github.com/ggg0203/ai-code-review.git /root/ai-code-review
+            fi
+            cd /root/ai-code-review/docker
+            docker compose up -d --build
+            echo "✅ ECS 部署完成"
