@@ -7,13 +7,14 @@
  * 3. 自定义组件/样式突出严重程度标签、代码块、评分表格等
  */
 import { useState, useRef, useEffect } from 'react'
-import { Input, Button, Card, Select, Typography, Space, Tag, Segmented } from 'antd'
+import { Input, Button, Card, Select, Typography, Space, Tag, Segmented, message } from 'antd'
 import { ThunderboltOutlined, CheckCircleOutlined, TeamOutlined, SyncOutlined } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useStreamStore } from '../stores/stream'
 import { MARKDOWN_COMPONENTS } from '@ui/Markdown'
+import client from '../api/client'
 
 const { Text } = Typography
 
@@ -47,6 +48,8 @@ export default function StreamReview() {
   const [agentResults, setAgentResults] = useState<Record<string, string>>({ security: '', performance: '', style: '' })
   const [agentLoading, setAgentLoading] = useState(false)
   const [agentTab, setAgentTab] = useState<string>('security')
+  const [prTitle, setPrTitle] = useState('')
+  const [saving, setSaving] = useState(false)
   const { streamResult: rawResult, streaming: loading, setStreamResult, setStreaming } = useStreamStore()
   const [isCached, setIsCached] = useState(false)
   const resultRef = useRef<HTMLDivElement>(null)
@@ -158,6 +161,28 @@ export default function StreamReview() {
     }
   }
 
+  // 保存审查结果
+  const handleSave = async () => {
+    if (!rawResult || !prTitle.trim()) { message.warning('请先输入 PR 标题'); return }
+    setSaving(true)
+    try {
+      await client.post('/reviews/', {
+        pr_title: prTitle,
+        code_snippet: code,
+        language,
+        project_id: 1,
+        status: 'completed',
+        ai_result: rawResult,
+      })
+      message.success('已保存到审查记录')
+      setPrTitle('')
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail || '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', gap: 24, height: 'calc(100vh - 140px)' }}>
       {/* ====== 左侧：代码输入区 ====== */}
@@ -195,6 +220,24 @@ export default function StreamReview() {
             options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: 'on', scrollBeyondLastLine: false }}
           />
         </div>
+        <Input
+          placeholder="PR 标题（流式审查完成后可保存）"
+          value={prTitle}
+          onChange={e => setPrTitle(e.target.value)}
+          style={{ marginTop: 8 }}
+        />
+        {rawResult && !loading && (
+          <Button
+            type="default"
+            icon={<CheckCircleOutlined />}
+            onClick={handleSave}
+            loading={saving}
+            block
+            style={{ marginTop: 4 }}
+          >
+            保存到审查记录
+          </Button>
+        )}
         <Button
           type="primary"
           icon={mode === 'multi' ? <TeamOutlined /> : <ThunderboltOutlined />}
