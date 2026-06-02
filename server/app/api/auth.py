@@ -216,8 +216,90 @@ async def change_password(
     return {"message": "密码修改成功"}
 
 
-# ========== 7. RBAC 测试接口 ==========
-from app.core.security import require_admin, require_reviewer
+# ========== 7. 管理员用户管理 ==========
+from app.core.security import require_admin
+from app.models.user import UserRole
+
+
+class AdminUserResponse(BaseModel):
+    """管理员视角的用户信息（含完整字段）"""
+    id: int
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UpdateRoleRequest(BaseModel):
+    """修改角色请求"""
+    role: str
+
+
+@router.get("/users", response_model=list[AdminUserResponse])
+async def list_users(
+    current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有用户列表（仅管理员）"""
+    result = await db.execute(
+        select(User).order_by(User.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.put("/users/{user_id}/role", response_model=AdminUserResponse)
+async def update_user_role(
+    user_id: int,
+    req: UpdateRoleRequest,
+    current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """修改用户角色（仅管理员）"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能修改自己的角色")
+
+    try:
+        user.role = UserRole(req.role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"无效角色: {req.role}")
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.put("/users/{user_id}/toggle-active", response_model=AdminUserResponse)
+async def toggle_user_active(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """启用/禁用用户（仅管理员）"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="不能禁用自己的账号")
+
+    user.is_active = not user.is_active
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+# ========== 8. RBAC 测试接口 ==========
 
 @router.get("/admin-only")
 async def admin_only(

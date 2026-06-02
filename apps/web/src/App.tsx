@@ -5,6 +5,7 @@ import Reviews from "./pages/Reviews";
 import ReviewDetail from "./pages/ReviewDetail";
 import RAGPage from "./pages/RAGPage";
 import Settings from "./pages/Settings";
+import Admin from "./pages/Admin";
 import MainLayout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import StreamReview from "./pages/StreamReview";
@@ -50,6 +51,10 @@ function App() {
           <Route
             path="/settings"
             element={token ? <Settings /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/admin"
+            element={token ? <Admin /> : <Navigate to="/login" />}
           />
         </Route>
         <Route path="*" element={<Navigate to="/projects" />} />
