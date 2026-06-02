@@ -36,3 +36,14 @@ export async function apiPost<T = any>(url: string, data?: any): Promise<T> {
   })
   return resp.data as T
 }
+
+// 通用 PUT 请求
+export async function apiPut<T = any>(url: string, data?: any): Promise<T> {
+  const resp = await uni.request({
+    url: API_BASE + url,
+    method: 'PUT',
+    header: authHeaders(),
+    data,
+  })
+  return resp.data as T
+}

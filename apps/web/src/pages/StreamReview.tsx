@@ -9,12 +9,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { Input, Button, Card, Select, Typography, Space, Tag } from 'antd'
 import { ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import Editor from '@monaco-editor/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useStreamStore } from '../stores/stream'
 import { MARKDOWN_COMPONENTS } from '@ui/Markdown'
 
-const { TextArea } = Input
 const { Text } = Typography
 
 // ---- 主组件 ------------------------------------------------------------------
@@ -104,14 +104,13 @@ export default function StreamReview() {
           />
           <Text type="secondary" style={{ fontSize: 12 }}>选择语言后粘贴代码</Text>
         </Space>
-        <TextArea
+        <Editor
+          height="100%"
+          language={language.toLowerCase()}
           value={code}
-          onChange={e => setCode(e.target.value)}
-          placeholder={`// 在此粘贴 ${language} 代码...`}
-          style={{
-            flex: 1, fontFamily: '"Fira Code", Consolas, monospace',
-            fontSize: 13, resize: 'none',
-          }}
+          onChange={(val) => setCode(val || '')}
+          theme="vs-dark"
+          options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: 'on', scrollBeyondLastLine: false }}
         />
         <Button
           type="primary"
