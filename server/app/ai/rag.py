@@ -139,17 +139,17 @@ Action: search["关键词1,关键词2"]
     keywords = question if not search_match else search_match.group(1)
 
     # ---- Step 2: Action（执行检索）----
-    query_vector = await _embed(keywords)
-    results = qdrant.search(
+    query_vector = await get_embedding(keywords)
+    results = qdrant.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_vector,
+        query=query_vector,
         limit=top_k,
     )
 
     context_parts = []
-    for r in results:
-        project = r.payload.get("project", "") if r.payload else ""
-        context_parts.append(f"[{project}] {r.payload.get('text', '')}" if r.payload else "")
+    for hit in results.points:
+        payload = hit.payload or {}
+        context_parts.append(payload.get("text", ""))
     context_text = "\n---\n".join(context_parts) if context_parts else "（知识库中未找到相关内容）"
 
     # ---- Step 3: Agent 反思 + 最终回答 ----
