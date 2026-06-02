@@ -7,7 +7,8 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
     "paths": {
-      "@shared/*": ["../../packages/shared/*"]
+      "@shared/*": ["../../packages/shared/*"],
+      "@ui/*": ["../../packages/ui/*"]
     },
 
     /* Bundler mode */
@@ -24,5 +25,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "../../packages/shared"]
+  "include": ["src", "../../packages/shared", "../../packages/ui"]
 }

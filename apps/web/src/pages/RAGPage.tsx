@@ -15,45 +15,10 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import client from "../api/client";
+import { MARKDOWN_COMPONENTS } from "@ui/Markdown";
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
-
-// ---- Markdown 渲染组件（与其他页面保持一致） ----
-function CodeBlock({ className, children, ...props }: any) {
-  const language = className ? className.replace("language-", "") : "";
-  return (
-    <div style={{ margin: "12px 0", borderRadius: 8, overflow: "hidden", border: "1px solid #e8e8e8" }}>
-      {language && (
-        <div style={{
-          padding: "4px 16px", fontSize: 12, color: "#888",
-          background: "#fafafa", borderBottom: "1px solid #e8e8e8", fontFamily: "monospace",
-        }}>
-          {language}
-        </div>
-      )}
-      <pre style={{
-        margin: 0, padding: "16px", overflow: "auto",
-        background: "#1e1e1e", color: "#d4d4d4",
-        fontFamily: '"Fira Code", Consolas, monospace',
-        fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap",
-      }}>
-        <code className={className} {...props}>{children}</code>
-      </pre>
-    </div>
-  );
-}
-
-function InlineCode({ children, ...props }: any) {
-  return (
-    <code {...props} style={{
-      background: "#f5f2f0", color: "#c7254e", padding: "2px 6px",
-      borderRadius: 4, fontFamily: '"Fira Code", Consolas, monospace', fontSize: "0.9em",
-    }}>
-      {children}
-    </code>
-  );
-}
 
 // ---- 主组件 ----
 
@@ -162,24 +127,7 @@ export default function RAGPage() {
                       </div>
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
-                        components={{
-                          code({ className, children, ...props }: any) {
-                            const isBlock = className?.startsWith("language-");
-                            if (isBlock) {
-                              return <CodeBlock className={className} {...props}>{children}</CodeBlock>;
-                            }
-                            return <InlineCode {...props}>{children}</InlineCode>;
-                          },
-                          blockquote: ({ children, ...props }: any) => (
-                            <blockquote {...props} style={{
-                              margin: "12px 0", padding: "8px 16px",
-                              borderLeft: "4px solid #1890ff", background: "#e6f7ff",
-                              borderRadius: "0 6px 6px 0",
-                            }}>
-                              {children}
-                            </blockquote>
-                          ),
-                        }}
+                        components={MARKDOWN_COMPONENTS}
                       >
                         {answer}
                       </ReactMarkdown>
