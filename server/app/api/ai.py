@@ -73,3 +73,35 @@ async def ai_review_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ========== 3. 多角色 Agent 协作审查（流式） ==========
+
+class AgentReviewRequest(BaseModel):
+    code: str
+    language: str = "Python"
+
+
+@router.post("/review/agent")
+async def agent_review(
+    req: AgentReviewRequest,
+    current_user=Depends(get_current_user),
+):
+    """三个 Agent（安全/性能/风格）并行审查，流式推结果"""
+    from app.ai.agent_reviewer import review_agent_stream
+
+    async def event_stream():
+        try:
+            async for chunk in review_agent_stream(req.code, req.language):
+                yield chunk
+        except Exception as e:
+            yield f"data: [ERROR] {str(e)}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

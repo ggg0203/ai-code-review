@@ -47,3 +47,17 @@ async def ask_rag(
         return {"answer": answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agent")
+async def ask_rag_agent(
+    req: RagQueryRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """RAG ReAct Agent 智能问答（Thought → Action → Observation → Answer）"""
+    try:
+        from app.ai.rag import rag_query_agent
+        answer = await rag_query_agent(req.question, req.top_k)
+        return {"answer": answer}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

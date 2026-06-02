@@ -7,8 +7,8 @@
  * 3. 自定义组件/样式突出严重程度标签、代码块、评分表格等
  */
 import { useState, useRef, useEffect } from 'react'
-import { Input, Button, Card, Select, Typography, Space, Tag } from 'antd'
-import { ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { Input, Button, Card, Select, Typography, Space, Tag, Segmented } from 'antd'
+import { ThunderboltOutlined, CheckCircleOutlined, TeamOutlined, SyncOutlined } from '@ant-design/icons'
 import Editor from '@monaco-editor/react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -22,6 +22,10 @@ const { Text } = Typography
 export default function StreamReview() {
   const [code, setCode] = useState('')
   const [language, setLanguage] = useState('Python')
+  const [mode, setMode] = useState<'single' | 'multi'>('single')
+  const [agentResults, setAgentResults] = useState<Record<string, string>>({ security: '', performance: '', style: '' })
+  const [agentLoading, setAgentLoading] = useState(false)
+  const [agentTab, setAgentTab] = useState<string>('security')
   const { streamResult: rawResult, streaming: loading, setStreamResult, setStreaming } = useStreamStore()
   const resultRef = useRef<HTMLDivElement>(null)
 
@@ -85,6 +89,47 @@ export default function StreamReview() {
     }
   }
 
+  // 多 Agent 审查
+  const handleAgentReview = async () => {
+    if (!code.trim()) return
+    setAgentLoading(true)
+    setAgentResults({ security: '', performance: '', style: '' })
+    setStreamResult(() => '')
+
+    try {
+      const token = localStorage.getItem('access_token')
+      const response = await fetch('/api/ai/review/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code, language }),
+      })
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      if (!reader) return
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        for (const line of decoder.decode(value).split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6)
+          if (raw === '[DONE]') { setAgentLoading(false); return }
+          try {
+            const msg = JSON.parse(raw)
+            if (msg.type === 'agent_result') {
+              setAgentResults(prev => ({ ...prev, [msg.agent]: msg.content }))
+            }
+          } catch {}
+        }
+      }
+    } catch {
+      setStreamResult(() => '> ❌ **Agent 调用失败**')
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', gap: 24, height: 'calc(100vh - 140px)' }}>
       {/* ====== 左侧：代码输入区 ====== */}
@@ -104,6 +149,14 @@ export default function StreamReview() {
           />
           <Text type="secondary" style={{ fontSize: 12 }}>选择语言后粘贴代码</Text>
         </Space>
+        <Segmented
+          value={mode}
+          onChange={(v) => setMode(v as 'single' | 'multi')}
+          options={[
+            { value: 'single', label: '单次审查' },
+            { value: 'multi', label: '多 Agent 协作' },
+          ]}
+        />
         <Editor
           height="100%"
           language={language.toLowerCase()}
@@ -114,9 +167,9 @@ export default function StreamReview() {
         />
         <Button
           type="primary"
-          icon={<ThunderboltOutlined />}
-          onClick={handleReview}
-          loading={loading}
+          icon={mode === 'multi' ? <TeamOutlined /> : <ThunderboltOutlined />}
+          onClick={mode === 'multi' ? handleAgentReview : handleReview}
+          loading={mode === 'multi' ? agentLoading : loading}
           block
           style={{ marginTop: 12, height: 44 }}
           size="large"
@@ -146,8 +199,54 @@ export default function StreamReview() {
             background: '#fefefe',
           }}
         >
-          {rawResult ? (
-            /* ---- react-markdown 实时渲染 ---- */
+          {mode === 'multi' ? (
+            /* ---- 多 Agent 结果面板 ---- */
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ display: 'flex', gap: 8, padding: '8px 16px', borderBottom: '1px solid #f0f0f0' }}>
+                {[
+                  { key: 'security', label: '🔴 安全Agent', icon: '🛡' },
+                  { key: 'performance', label: '🟡 性能Agent', icon: '⚡' },
+                  { key: 'style', label: '🔵 规范Agent', icon: '📐' },
+                ].map(a => (
+                  <Button
+                    key={a.key}
+                    size="small"
+                    type={agentTab === a.key ? 'primary' : 'default'}
+                    onClick={() => setAgentTab(a.key)}
+                    loading={agentLoading && !agentResults[a.key]}
+                  >
+                    {agentResults[a.key] && <CheckCircleOutlined style={{ marginRight: 4, color: '#52c41a' }} />}
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
+              <div ref={resultRef} style={{ flex: 1, overflow: 'auto', padding: '16px 24px', background: '#fefefe' }}>
+                {agentResults[agentTab] ? (
+                  <div className="stream-markdown-body">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                      {agentResults[agentTab]}
+                    </ReactMarkdown>
+                  </div>
+                ) : agentLoading ? (
+                  <div style={{ textAlign: 'center', marginTop: 80 }}>
+                    <SyncOutlined spin style={{ fontSize: 36, color: '#1890ff' }} />
+                    <p style={{ marginTop: 16, color: '#999' }}>Agent 正在分析中...</p>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', marginTop: 80 }}>
+                    <TeamOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
+                    <p style={{ marginTop: 16, color: '#999', fontSize: 14 }}>
+                      三个 AI Agent 将协作审查代码
+                    </p>
+                    <p style={{ color: '#bbb', fontSize: 12 }}>
+                      安全 · 性能 · 规范 · 三位一体
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : rawResult ? (
+            /* ---- 单次审查 react-markdown ---- */
             <div className="stream-markdown-body">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
