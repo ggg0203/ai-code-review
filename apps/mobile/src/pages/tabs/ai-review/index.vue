@@ -67,10 +67,66 @@ async function handleReview() {
   reviewing.value = true
   result.value = ''
 
+  const token = getToken()
+  const body = JSON.stringify({ code: code.value, language: languages[langIndex.value] })
+
+  // #ifdef H5
+  // H5 端：原生 fetch + ReadableStream 真流式 SSE
   try {
-    const token = getToken()
-    // uni-app 流式请求：使用 requestTask + enableChunked
-    const task = uni.request({
+    const response = await fetch(`${API_BASE}/ai/review/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body,
+    })
+
+    if (!response.ok) {
+      result.value = `[请求失败: ${response.status}]`
+      reviewing.value = false
+      return
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+    if (!reader) { reviewing.value = false; return }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const text = decoder.decode(value, { stream: true })
+      const lines = text.split('\n')
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+        if (data === '[DONE]') {
+          uni.showToast({ title: '分析完成', icon: 'success' })
+          return
+        }
+        if (data.startsWith('[ERROR]')) {
+          result.value += '\n[错误] ' + data.slice(8)
+          return
+        }
+        try {
+          result.value += JSON.parse(data)
+        } catch {
+          result.value += data
+        }
+      }
+    }
+  } catch (e) {
+    result.value += '\n[网络错误]'
+  } finally {
+    reviewing.value = false
+  }
+  // #endif
+
+  // #ifndef H5
+  // 非 H5 端：一次性请求返回结果（SSE 兼容性限制）
+  try {
+    const resp = await uni.request({
       url: `${API_BASE}/ai/review/stream`,
       method: 'POST',
       header: {
@@ -78,50 +134,29 @@ async function handleReview() {
         'Authorization': `Bearer ${token}`,
       },
       data: { code: code.value, language: languages[langIndex.value] },
-      enableChunked: true, // 启用分块传输（SSE）
       responseType: 'text',
-      success: () => {
-        // 流结束
-        reviewing.value = false
-      },
-      fail: (err) => {
-        result.value += '\n[请求失败]'
-        reviewing.value = false
-      },
     })
-
-    // 监听流式数据
-    task.onChunkReceived((res: any) => {
+    // 收集所有 SSE 事件
+    const raw = (resp.data as string) || ''
+    const lines = raw.split('\n')
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6)
+      if (data === '[DONE]') continue
+      if (data.startsWith('[ERROR]')) { result.value += '\n[错误] ' + data.slice(8); continue }
       try {
-        // res.data 可能是 ArrayBuffer
-        const text = typeof res.data === 'string' ? res.data : ''
-        const lines = text.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') {
-              uni.showToast({ title: '分析完成', icon: 'success' })
-              return
-            }
-            if (data.startsWith('[ERROR]')) {
-              result.value += '\n[错误] ' + data.slice(8)
-              return
-            }
-            try {
-              result.value += JSON.parse(data)
-            } catch {
-              result.value += data
-            }
-          }
-        }
-      } catch (e) {
-        // 忽略解析错误
+        result.value += JSON.parse(data)
+      } catch {
+        result.value += data
       }
-    })
+    }
+    uni.showToast({ title: '分析完成', icon: 'success' })
   } catch (e) {
+    result.value += '\n[请求失败]'
+  } finally {
     reviewing.value = false
-    uni.showToast({ title: '请求失败', icon: 'none' })
   }
+  // #endif
 }
 </script>
 
