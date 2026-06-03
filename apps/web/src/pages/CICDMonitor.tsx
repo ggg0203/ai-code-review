@@ -1,10 +1,11 @@
 /**
- * CI/CD 实时监控大屏 — SSE 流式推送 + GitHub Actions 真实数据
+ * CI/CD 实时监控大屏 — 短轮询 GitHub Actions 真实数据
  */
-import { useState, useEffect, useRef } from 'react'
-import { Card, Tag, Table, Typography, Spin, Empty, Statistic, message, Badge } from 'antd'
+import { useState, useEffect, useCallback } from 'react'
+import { Card, Tag, Table, Typography, Spin, Empty, Statistic, message } from 'antd'
 import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
+import client from '../api/client'
 
 const { Title, Text } = Typography
 
@@ -62,7 +63,7 @@ function successChartOption(rate: number) {
 }
 
 function durationChartOption(builds: BuildRecord[]) {
-  const jobs = ['Lint', 'TypeCheck', 'Test', 'Build', 'Deploy'];
+  const jobs = ['Lint', 'TypeCheck', 'Test', 'Build', 'Deploy']
   const durations = jobs.map(job =>
     Math.round(builds.reduce((sum, b) => {
       const s = b.stages.find(st => st.name.includes(job))
@@ -81,80 +82,29 @@ function durationChartOption(builds: BuildRecord[]) {
 
 export default function CICDMonitor() {
   const [data, setData] = useState<CiData | null>(null)
-  const [connected, setConnected] = useState(false)
-  const [eventTip, setEventTip] = useState('')
-  const eventRef = useRef<ReturnType<typeof setTimeout>>()
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (!token) return
-
-    let es: EventSource | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout>
-
-    function connect() {
-      es = new EventSource(`http://47.86.191.121:8000/ci/stream?token=${encodeURIComponent(token!)}`)
-      setConnected(true)
-
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.type === 'full') {
-            // 全量数据更新
-            setData({
-              success_rate: msg.success_rate,
-              avg_duration: msg.avg_duration,
-              total_runs: msg.total_runs,
-              builds: msg.builds,
-            })
-          } else if (msg.type === 'workflow_job') {
-            // 单个 Job 状态变更 → 闪烁提示 + 拉全量数据
-            const statusMap: Record<string, string> = {
-              completed: msg.conclusion === 'success' ? '✅ 通过' : '❌ 失败',
-              in_progress: '🔄 执行中',
-              queued: '⏳ 排队中',
-            }
-            setEventTip(`${msg.job_name}: ${statusMap[msg.status] || msg.status}`)
-            if (eventRef.current) clearTimeout(eventRef.current)
-            eventRef.current = setTimeout(() => setEventTip(''), 4000)
-
-            // 触发全量刷新（短轮询兜底）
-            setTimeout(() => refreshData(), 500)
-          } else if (msg.type === 'workflow_run') {
-            setEventTip(`Workflow #${msg.run_number}: ${msg.action}`)
-            if (eventRef.current) clearTimeout(eventRef.current)
-            eventRef.current = setTimeout(() => setEventTip(''), 4000)
-            setTimeout(() => refreshData(), 500)
-          }
-        } catch {}
-      }
-
-      es.onerror = () => {
-        setConnected(false)
-        es?.close()
-        reconnectTimer = setTimeout(connect, 3000)  // 断开 3s 后重连
-      }
-    }
-
-    connect()
-
-    return () => {
-      es?.close()
-      clearTimeout(reconnectTimer)
-      if (eventRef.current) clearTimeout(eventRef.current)
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await client.get('/ci/status')
+      setData(res.data)
+    } catch {
+      // GitHub 不可达时静默
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  const refreshData = async () => {
-    try {
-      const res = await fetch('/api/ci/status', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
-      })
-      if (res.ok) setData(await res.json())
-    } catch {}
-  }
+  useEffect(() => { fetchData() }, [fetchData])
 
-  if (!data) return <Spin size="large" style={{ display: 'block', margin: '200px auto' }} />
+  // 3 秒短轮询模拟实时
+  useEffect(() => {
+    const timer = setInterval(fetchData, 3000)
+    return () => clearInterval(timer)
+  }, [fetchData])
+
+  if (loading) return <Spin size="large" style={{ display: 'block', margin: '200px auto' }} />
+  if (!data) return <Empty description="暂无 CI 数据" style={{ marginTop: 200 }} />
 
   const columns = [
     { title: '构建', dataIndex: 'name', width: 120, render: (_: any, r: BuildRecord) => <span style={{ fontWeight: 500 }}>{r.name}</span> },
@@ -177,15 +127,11 @@ export default function CICDMonitor() {
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Title level={4} style={{ marginBottom: 24 }}>
-        <Badge status={connected ? 'success' : 'error'} />
-        <SyncOutlined spin={connected} style={{ margin: '0 8px', color: connected ? '#52c41a' : '#ff4d4f' }} />
+        <SyncOutlined spin style={{ marginRight: 8, color: '#1890ff' }} />
         CI/CD 实时监控
         <Text type="secondary" style={{ fontSize: 13, marginLeft: 12, fontWeight: 400 }}>
-          {connected ? '🟢 SSE 实时连接' : '🔴 连接断开 · 重连中'}
+          GitHub Actions · 3s 实时轮询
         </Text>
-        {eventTip && (
-          <Tag color="blue" style={{ marginLeft: 12 }}>{eventTip}</Tag>
-        )}
       </Title>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
