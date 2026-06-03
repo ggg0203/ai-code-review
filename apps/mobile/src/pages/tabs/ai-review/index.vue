@@ -14,6 +14,7 @@
       v-model="code"
       placeholder="粘贴待审查的代码..."
       :disabled="reviewing"
+      maxlength="-1"
     />
 
     <!-- 审查按钮 -->
