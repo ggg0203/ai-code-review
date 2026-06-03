@@ -93,7 +93,7 @@ export default function CICDMonitor() {
     let reconnectTimer: ReturnType<typeof setTimeout>
 
     function connect() {
-      es = new EventSource(`/api/ci/stream?token=${encodeURIComponent(token!)}`)
+      es = new EventSource(`http://47.86.191.121:8000/ci/stream?token=${encodeURIComponent(token!)}`)
       setConnected(true)
 
       es.onmessage = (e) => {
