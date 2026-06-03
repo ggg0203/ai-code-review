@@ -127,6 +127,29 @@ async def get_current_user(
 
     return user
 
+
+async def get_current_user_from_token(token: str) -> User:
+    """从 token 字符串直接验证用户（用于 SSE/WebSocket 等无法带 Header 的场景）"""
+    from app.core.database import async_session
+
+    payload = decode_token(token)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token 无效或已过期")
+
+    email = payload.get("sub")
+    if email is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token 格式错误")
+
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户不存在")
+
+    return user
+
+
 # ========== 4. RBAC 权限依赖 ==========
 from typing import List
 
