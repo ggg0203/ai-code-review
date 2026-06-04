@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-CI/CD 状态 API — 真实 GitHub Actions 数据 + 内存缓存
-架构：模块加载时立即拉取 → 后台 60s 定时刷新 → API 秒回
+CI/CD 状态 API — GitHub Actions 真实数据 + 内存缓存
+策略：后台线程立即拉取 runs 列表（~5s），后续刷新再补 Job 详情
 """
 import threading
 import time
@@ -18,14 +18,14 @@ router = APIRouter(prefix="/ci", tags=["CI/CD"])
 
 GITHUB_API = "https://api.github.com"
 REPO = "ggg0203/ai-code-review"
-CST = timezone(timedelta(hours=8))  # 北京时间 UTC+8
+CST = timezone(timedelta(hours=8))
 
-# ===== 全局缓存 =====
+# ===== 缓存 =====
 _cache_lock = threading.Lock()
 _cache_data = {"success_rate": 0.0, "avg_duration": "N/A", "total_runs": 0, "builds": []}
+_cache_ready = False
 
 
-# ===== 模型 =====
 class Stage(BaseModel):
     name: str
     status: str
@@ -50,30 +50,27 @@ class CIStatusResponse(BaseModel):
     builds: list[BuildItem]
 
 
-# ===== 工具函数 =====
-def _github_headers():
+# ===== 工具 =====
+def _gh_headers():
     return {
         "Authorization": f"token {settings.GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json",
     }
 
 
-def _to_cst(utc_str: str) -> str:
-    """UTC 字符串 → 北京时间字符串 (MM-DD HH:MM)"""
+def _cst_time(utc_str: str) -> str:
     try:
-        utc_str_clean = utc_str.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(utc_str_clean).astimezone(CST)
-        return dt.strftime("%m-%d %H:%M")
+        clean = utc_str.replace("Z", "+00:00")
+        return datetime.fromisoformat(clean).astimezone(CST).strftime("%m-%d %H:%M")
     except Exception:
-        return utc_str[:16] if utc_str else ""
+        return ""
 
 
-def _calc_duration(started: str, updated: str) -> str:
-    """计算两个 UTC 字符串之间的耗时"""
+def _duration(started: str, updated: str) -> str:
     try:
-        start = datetime.fromisoformat(started.replace("Z", "+00:00"))
-        end = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-        sec = int((end - start).total_seconds())
+        s = datetime.fromisoformat(started.replace("Z", "+00:00"))
+        e = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+        sec = int((e - s).total_seconds())
         if sec < 0:
             return "进行中..."
         return f"{sec}s" if sec < 60 else f"{sec // 60}m{sec % 60}s"
@@ -81,8 +78,7 @@ def _calc_duration(started: str, updated: str) -> str:
         return "-"
 
 
-def _status_from_conclusion(conclusion: str | None, status: str) -> str:
-    """GitHub conclusion/status → 前端状态"""
+def _build_status(conclusion, status):
     if conclusion == "success":
         return "success"
     if conclusion == "failure":
@@ -92,149 +88,137 @@ def _status_from_conclusion(conclusion: str | None, status: str) -> str:
     return "pending"
 
 
-def _fetch_jobs_for_run(run_id: int) -> list[dict]:
-    """拉取某次构建的真实 job 列表"""
+def _parse_sec(dur_str: str) -> int | None:
+    try:
+        if "m" in dur_str:
+            m, s = dur_str.replace("s", "").split("m")
+            return int(m) * 60 + int(s)
+        return int(dur_str.replace("s", ""))
+    except Exception:
+        return None
+
+
+# ===== 快取：只拉 runs 列表（1 次 API 调用，~5s） =====
+def _fetch_runs():
+    """只获取 workflow runs 列表，不拉 job 详情，响应快"""
+    if not settings.GITHUB_TOKEN:
+        return []
+
+    try:
+        resp = httpx.get(
+            f"{GITHUB_API}/repos/{REPO}/actions/runs?per_page=20",
+            headers=_gh_headers(),
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return []
+        runs = resp.json().get("workflow_runs", [])
+    except Exception:
+        return []
+
+    builds = []
+    for run in runs:
+        rid = run["id"]
+        conclusion = run.get("conclusion")
+        status = run.get("status")
+        dur_str = _duration(run.get("run_started_at", ""), run.get("updated_at", ""))
+        bs = _build_status(conclusion, status)
+
+        builds.append({
+            "id": rid,
+            "name": f"#{run.get('run_number', '?')} {(run.get('display_title') or run.get('name', ''))[:35]}",
+            "status": bs,
+            "branch": run.get("head_branch", "main"),
+            "duration": dur_str,
+            "commit": (run.get("head_sha") or "")[:7],
+            "time": _cst_time(run.get("created_at", "")),
+            "stages": [{"name": "Pipeline", "status": bs, "duration": dur_str}],  # 简化为单阶段
+        })
+
+    return builds
+
+
+# ===== 慢补：为指定构建拉真实 job 详情 =====
+def _fetch_jobs(run_id: int) -> list[dict]:
     try:
         resp = httpx.get(
             f"{GITHUB_API}/repos/{REPO}/actions/runs/{run_id}/jobs?per_page=20",
-            headers=_github_headers(),
+            headers=_gh_headers(),
             timeout=8,
         )
         if resp.status_code != 200:
             return []
         jobs = []
         for j in resp.json().get("jobs", []):
-            j_dur = _calc_duration(
-                j.get("started_at", ""),
-                j.get("completed_at", ""),
-            )
             jobs.append({
                 "name": j.get("name", "?"),
-                "status": _status_from_conclusion(j.get("conclusion"), j.get("status", "")),
-                "duration": j_dur,
+                "status": _build_status(j.get("conclusion"), j.get("status", "")),
+                "duration": _duration(j.get("started_at", ""), j.get("completed_at", "")),
             })
         return jobs
     except Exception:
         return []
 
 
-# ===== 核心：拉取真实数据 =====
-def _fetch_github_sync():
-    token = settings.GITHUB_TOKEN
-    if not token:
-        return [], 0.0, "N/A"
+# ===== 完整刷新（runs + job 详情）=====
+def _full_refresh():
+    builds = _fetch_runs()
+    if not builds:
+        return
 
-    # 第一步：拉取最近 20 条 workflow runs
+    # 为前 5 条补 Job 详情
+    for i, b in enumerate(builds):
+        if i >= 5:
+            break
+        jobs = _fetch_jobs(b["id"])
+        if jobs:
+            b["stages"] = jobs
+
+    # 统计
+    success_count = sum(1 for b in builds if b["status"] == "success")
+    durations_sec = [s for b in builds if (s := _parse_sec(b["duration"]))]
+
+    with _cache_lock:
+        _cache_data = {
+            "success_rate": round(success_count / max(len(builds), 1) * 100, 1),
+            "avg_duration": f"{sum(durations_sec) // len(durations_sec)}s" if durations_sec else "N/A",
+            "total_runs": len(builds),
+            "builds": builds,
+        }
+        _cache_ready = True
+
+
+# ===== 后台线程：立即快取 → 60s 后慢补 → 循环 =====
+def _bg_worker():
+    global _cache_ready
+
+    # 第 0 轮：快取（~5s 填充）
     try:
-        resp = httpx.get(
-            f"{GITHUB_API}/repos/{REPO}/actions/runs?per_page=20",
-            headers=_github_headers(),
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return [], 0.0, "N/A"
-        runs = resp.json().get("workflow_runs", [])
-    except Exception:
-        return [], 0.0, "N/A"
-
-    builds = []
-    durations = []
-    success_count = 0
-
-    for idx, run in enumerate(runs):
-        rid = run["id"]
-        conclusion = run.get("conclusion")
-        status = run.get("status")
-        run_number = run.get("run_number", "?")
-        display_name = run.get("display_title", run.get("name", "?"))
-        branch = run.get("head_branch", "main")
-        commit_sha = (run.get("head_sha") or "")[:7]
-
-        # 北京时间
-        created_cst = _to_cst(run.get("created_at", ""))
-
-        # 耗时
-        dur_str = _calc_duration(
-            run.get("run_started_at", ""),
-            run.get("updated_at", ""),
-        )
-        if dur_str != "进行中..." and dur_str != "-":
-            # 提取秒数用于统计
-            try:
-                m = dur_str.replace("s", "").replace("m", ":")
-                if ":" in m:
-                    parts = m.split(":")
-                    durations.append(int(parts[0]) * 60 + int(parts[1]))
-                else:
-                    durations.append(int(m))
-            except Exception:
-                pass
-
-        # 构建状态
-        build_status = _status_from_conclusion(conclusion, status)
-        if build_status == "success":
-            success_count += 1
-
-        # 对最近 5 条获取详细 job 信息，其余只显示 run 级别状态
-        if idx < 5:
-            stages = _fetch_jobs_for_run(rid)
-        else:
-            # 没有详细 job 信息时，显示 run 级别的单一阶段
-            stages = [{"name": "CI", "status": build_status, "duration": dur_str}]
-
-        builds.append({
-            "id": rid,
-            "name": f"#{run_number} {display_name[:35]}",
-            "status": build_status,
-            "branch": branch,
-            "duration": dur_str,
-            "commit": commit_sha,
-            "time": created_cst,
-            "stages": stages,
-        })
-
-    total = len(runs)
-    rate = round(success_count / total * 100, 1) if total > 0 else 0.0
-    avg_dur = "N/A"
-    if durations:
-        avg_s = sum(durations) // len(durations)
-        avg_dur = f"{avg_s}s" if avg_s < 60 else f"{avg_s // 60}m{avg_s % 60}s"
-
-    return builds, rate, avg_dur
-
-
-# ===== 后台定时刷新 =====
-def _refresh_loop():
-    global _cache_data
-    while True:
-        try:
-            builds, rate, avg = _fetch_github_sync()
+        fast_builds = _fetch_runs()
+        if fast_builds:
+            sc = sum(1 for b in fast_builds if b["status"] == "success")
             with _cache_lock:
                 _cache_data = {
-                    "success_rate": rate,
-                    "avg_duration": avg,
-                    "total_runs": len(builds),
-                    "builds": builds,
+                    "success_rate": round(sc / max(len(fast_builds), 1) * 100, 1),
+                    "avg_duration": "N/A",
+                    "total_runs": len(fast_builds),
+                    "builds": fast_builds,
                 }
+                _cache_ready = True
+    except Exception:
+        pass
+
+    # 后续循环：完整刷新
+    while True:
+        time.sleep(60)
+        try:
+            _full_refresh()
         except Exception:
             pass
-        time.sleep(60)
 
 
-# 模块加载时立即执行首次刷新
-try:
-    _initial_builds, _initial_rate, _initial_avg = _fetch_github_sync()
-    _cache_data = {
-        "success_rate": _initial_rate,
-        "avg_duration": _initial_avg,
-        "total_runs": len(_initial_builds),
-        "builds": _initial_builds,
-    }
-except Exception:
-    pass
-
-_refresh_thread = threading.Thread(target=_refresh_loop, daemon=True, name="ci-refresh")
-_refresh_thread.start()
+_bg_thread = threading.Thread(target=_bg_worker, daemon=True, name="ci-bg")
+_bg_thread.start()
 
 
 # ===== API =====
