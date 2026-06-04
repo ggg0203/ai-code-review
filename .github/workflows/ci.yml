@@ -95,8 +95,13 @@ jobs:
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
+          password: ${{ secrets.ECS_PASSWORD }}
+          port: 22
+          timeout: 120s
           script: |
+            # 启用密码登录（防止首次部署失败）
+            sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config 2>/dev/null
+            systemctl restart sshd 2>/dev/null
             # 拉取最新代码
             if [ -d /root/ai-code-review ]; then
               cd /root/ai-code-review && git pull origin main
