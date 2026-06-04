@@ -325,17 +325,22 @@ GITHUB_USER_API = "https://api.github.com/user"
 async def github_login(source: str = "web", mobile_redirect: str = ""):
     """
     跳转 GitHub OAuth 授权页
-    source=web         → 授权后重定向回 Web 端 (localhost:5173)
+    source=web         → 授权后重定向回 Web 端
     source=mobile      → 授权后重定向回移动端
-    mobile_redirect    → 移动端回调地址（可选，默认 localhost:8080）
+    mobile_redirect    → 移动端回调地址（URL编码后的完整地址）
     """
-    state = secrets.token_urlsafe(32)  # 防 CSRF
-    redirect_info = f"{source}:{mobile_redirect}:{state}" if source == "mobile" else f"web:{state}"
+    import urllib.parse
+    state = secrets.token_urlsafe(32)
+    if source == "mobile":
+        # 用 | 分隔避免 URL 中的 : 冲突
+        state = f"mobile|{mobile_redirect}|{state}"
+    else:
+        state = f"web||{state}"  # 统一三段式: source|redirect|random
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
         "redirect_uri": "http://localhost:8000/auth/github/callback",
         "scope": "user:email",
-        "state": redirect_info,
+        "state": state,
     }
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     return RedirectResponse(f"{GITHUB_AUTH_URL}?{qs}")
@@ -355,13 +360,10 @@ async def github_callback(
     4. 签发 JWT
     5. 重定向回前端（带上 token）
     """
-    # 解析 state：格式为 "source:..." 或 "web:random"
-    source = "web"
-    mobile_url = ""
-    parts = state.split(":") if ":" in state else ["web", state]
-    source = parts[0]
-    if source == "mobile" and len(parts) >= 3:
-        mobile_url = parts[1]  # mobile_redirect URL
+    # 解析 state：格式为 "source|mobile_url|random" 或 "web||random"
+    parts = state.split("|")
+    source = parts[0] if len(parts) >= 1 else "web"
+    mobile_url = parts[1] if len(parts) >= 2 and parts[0] == "mobile" else ""
 
     # 用 code 换 access_token
     token_resp = httpx.post(
@@ -429,8 +431,9 @@ async def github_callback(
     refresh_token = create_refresh_token(data={"sub": user.email})
 
     # 重定向回前端
+    import urllib.parse
     if source == "mobile":
-        base = mobile_url or "http://localhost:8080"
+        base = urllib.parse.unquote(mobile_url) or "http://localhost:8080"
         redirect_url = f"{base}/#/?access_token={access_token}&refresh_token={refresh_token}"
     else:
         redirect_url = f"http://localhost:5173/login?access_token={access_token}&refresh_token={refresh_token}"
