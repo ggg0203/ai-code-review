@@ -90,28 +90,19 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Deploy via SSH (password)
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
-          password: ${{ secrets.ECS_PASSWORD }}
-          port: 22
-          timeout: 120s
+          key: ${{ secrets.ECS_SSH_KEY }}
           script: |
-            # 安装 git（如果新服务器没有）
-            command -v git || (apt-get update && apt-get install -y git)
             # 拉取最新代码
             if [ -d /root/ai-code-review ]; then
               cd /root/ai-code-review && git pull origin main
             else
               git clone https://github.com/ggg0203/ai-code-review.git /root/ai-code-review
             fi
-            # 创建 .env 文件（GitHub Token 等敏感配置不提交到仓库）
-            cat > /root/ai-code-review/docker/.env << 'ENVEOF'
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN_DEPLOY }}
-            DASHSCOPE_API_KEY=${{ secrets.DASHSCOPE_API_KEY }}
-            ENVEOF
             # 容器化部署
             cd /root/ai-code-review/docker
             docker compose up -d --build
