@@ -88,7 +88,7 @@ export default function CICDMonitor() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await client.get('/ci/status')
+      const res = await client.get('/ci/status', { timeout: 30000 })
       setData(res.data)
       setError(null)
       setPollFailCount(0)
