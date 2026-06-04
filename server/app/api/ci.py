@@ -191,10 +191,13 @@ def _full_refresh():
 # ===== 后台线程：立即快取 → 60s 后慢补 → 循环 =====
 def _bg_worker():
     global _cache_ready
+    import sys
 
     # 第 0 轮：快取（~5s 填充）
     try:
+        print("[CI-CACHE] 开始首次快取...", file=sys.stderr)
         fast_builds = _fetch_runs()
+        print(f"[CI-CACHE] 快取完成: {len(fast_builds)} 条构建", file=sys.stderr)
         if fast_builds:
             sc = sum(1 for b in fast_builds if b["status"] == "success")
             with _cache_lock:
@@ -205,16 +208,19 @@ def _bg_worker():
                     "builds": fast_builds,
                 }
                 _cache_ready = True
-    except Exception:
-        pass
+            print("[CI-CACHE] 缓存已就绪", file=sys.stderr)
+    except Exception as e:
+        print(f"[CI-CACHE] 快取失败: {e}", file=sys.stderr)
 
     # 后续循环：完整刷新
     while True:
         time.sleep(60)
         try:
+            print("[CI-CACHE] 开始完整刷新...", file=sys.stderr)
             _full_refresh()
-        except Exception:
-            pass
+            print(f"[CI-CACHE] 完整刷新完成: {_cache_data['total_runs']} 条", file=sys.stderr)
+        except Exception as e:
+            print(f"[CI-CACHE] 刷新失败: {e}", file=sys.stderr)
 
 
 _bg_thread = threading.Thread(target=_bg_worker, daemon=True, name="ci-bg")
