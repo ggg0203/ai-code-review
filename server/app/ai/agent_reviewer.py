@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 多角色协作 Agent — 安全/性能/风格 三个 Agent 并行审查
+支持 Vue/React 单文件组件分层审查
 """
 import asyncio
 import json
@@ -8,6 +9,7 @@ from typing import AsyncGenerator
 
 from openai import AsyncOpenAI
 from app.core.config import settings
+from app.ai.sfc_parser import detect_sfc_type, split_vue_sfc, VUE_SFC, REACT_JSX, REACT_TSX, REGULAR
 
 client = AsyncOpenAI(
     api_key=settings.DASHSCOPE_API_KEY,
@@ -83,16 +85,66 @@ AGENT_PROMPTS = {
 给出规范评分和理由。""",
 }
 
+# ===== Vue SFC Agent 提示词（末尾追加前端专项提示）=====
+SFC_APPEND = {
+    "security": """
+
+额外前端安全检查：
+- Template 中的 v-html 是否可能导致 XSS
+- 用户输入是否经过过滤
+- 敏感数据是否暴露在客户端""",
+
+    "performance": """
+
+额外前端性能检查：
+- 是否避免了 v-for 和 v-if 同时使用
+- computed vs method 选择是否正确
+- 大列表是否使用虚拟滚动
+- 组件是否避免不必要的重渲染""",
+
+    "style": """
+
+额外前端规范检查：
+- 组件命名是否符合 Vue/React 风格指南
+- Props/Emits 是否有清晰的类型定义
+- 是否遵循组件单一职责原则
+- CSS 是否使用了 scoped 或 CSS Modules""",
+}
+
 
 async def review_agent_stream(code: str, language: str) -> AsyncGenerator[str, None]:
     """
     三个 Agent 并行审查同一份代码，流式输出
-    策略：先发各 Agent 的 system prompt，再逐条推送内容
+    支持 Vue/React 单文件组件：自动拆解为 template/script/style 三部分
     """
+    sfc_type = detect_sfc_type(code, language)
+
+    # 构建用户提示词
+    if sfc_type == VUE_SFC:
+        parts = split_vue_sfc(code)
+        sections = []
+        if parts["template"]:
+            sections.append(f"### 📌 Template\n```html\n{parts['template']}\n```")
+        if parts["script"]:
+            lang = "typescript" if 'lang="ts"' in code else "javascript"
+            sections.append(f"### 📝 Script\n```{lang}\n{parts['script']}\n```")
+        if parts["style"]:
+            sections.append(f"### 🎨 Style\n```css\n{parts['style']}\n```")
+        user_prompt = "请审查以下 Vue 单文件组件，按 Template / Script / Style 三个区域分别审查：\n\n" + "\n\n".join(sections)
+        uses_sfc = True
+    elif sfc_type in (REACT_JSX, REACT_TSX):
+        lang = "tsx" if sfc_type == REACT_TSX else "jsx"
+        user_prompt = f"请审查以下 React 组件（{lang.upper()}）：\n\n```{lang}\n{code}\n```"
+        uses_sfc = True
+    else:
+        user_prompt = f"请审查以下{language}代码：\n\n```{language.lower()}\n{code}\n```"
+        uses_sfc = False
+
     async def call_agent(agent_type: str):
         """调用单个 Agent"""
         system_prompt = AGENT_PROMPTS[agent_type]
-        user_prompt = f"请审查以下{language}代码：\n\n```{language.lower()}\n{code}\n```"
+        if uses_sfc:
+            system_prompt += SFC_APPEND[agent_type]
 
         try:
             response = await client.chat.completions.create(
@@ -102,7 +154,7 @@ async def review_agent_stream(code: str, language: str) -> AsyncGenerator[str, N
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
-                max_tokens=1500,
+                max_tokens=2000 if uses_sfc else 1500,
             )
             content = response.choices[0].message.content or ""
             return agent_type, content, None
@@ -116,8 +168,8 @@ async def review_agent_stream(code: str, language: str) -> AsyncGenerator[str, N
         call_agent("style"),
     ]
 
-    # 发送开始信号
-    yield f"data: {json.dumps({'type': 'start', 'agents': ['security', 'performance', 'style']}, ensure_ascii=False)}\n\n"
+    # 发送开始信号（包含 SFC 类型信息）
+    yield f"data: {json.dumps({'type': 'start', 'agents': ['security', 'performance', 'style'], 'sfc_type': sfc_type}, ensure_ascii=False)}\n\n"
 
     # 逐个 Agent 推送结果
     for completed in asyncio.as_completed(tasks):
@@ -125,7 +177,6 @@ async def review_agent_stream(code: str, language: str) -> AsyncGenerator[str, N
         if error:
             yield f"data: {json.dumps({'type': 'agent_error', 'agent': agent_type, 'error': error}, ensure_ascii=False)}\n\n"
         elif content:
-            # 分块推送，前端渐进展示
             yield f"data: {json.dumps({'type': 'agent_result', 'agent': agent_type, 'content': content}, ensure_ascii=False)}\n\n"
 
     yield "data: [DONE]\n\n"

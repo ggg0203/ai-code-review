@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 AI 代码审查服务 — 接入阿里云百炼（兼容 OpenAI 协议）
+支持普通代码 + Vue/React 单文件组件分层审查
 """
 from typing import AsyncGenerator
 
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.ai.sfc_parser import (
+    detect_sfc_type, build_sfc_prompt, build_sfc_prompt_stream, REGULAR,
+)
 
 # ===== 初始化百炼客户端 =====
 client = AsyncOpenAI(
@@ -16,8 +20,13 @@ client = AsyncOpenAI(
 
 
 async def review_code(code: str, language: str = "Python") -> str:
-    """AI 代码审查"""
-    prompt = f"""你是一位资深代码审查专家，请审查以下 {language} 代码。
+    """AI 代码审查 — 支持 Vue/React 单文件组件"""
+    sfc_type = detect_sfc_type(code, language)
+    if sfc_type != REGULAR:
+        prompt, display_lang = build_sfc_prompt(code, language)
+        max_tok = 3072
+    else:
+        prompt = f"""你是一位资深代码审查专家，请审查以下 {language} 代码。
 
 审查要点：
 1. Bug 风险 — 逻辑错误、空指针
@@ -37,12 +46,13 @@ async def review_code(code: str, language: str = "Python") -> str:
 ```{language}
 {code}
 ```"""
+        max_tok = 2048
 
     response = await client.chat.completions.create(
         model="deepseek-v4-pro",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=2048,
+        max_tokens=max_tok,
     )
     return response.choices[0].message.content or ""
 
@@ -66,8 +76,13 @@ async def chat_with_ai(message: str, context: str = "") -> str:
 
 
 async def review_code_stream(code: str, language: str = "Python") -> AsyncGenerator[str, None]:
-    """AI 代码审查 — 流式输出（SSE）"""
-    prompt = f"""你是一位资深代码审查专家，请审查以下 {language} 代码。请严格遵循以下 Markdown 格式输出，确保内容结构清晰、突出关键信息。
+    """AI 代码审查 — 流式输出（SSE），支持 Vue/React 单文件组件"""
+    sfc_type = detect_sfc_type(code, language)
+    if sfc_type != REGULAR:
+        prompt, _ = build_sfc_prompt_stream(code, language)
+        max_tok = 3072
+    else:
+        prompt = f'''你是一位资深代码审查专家，请审查以下 {language} 代码。请严格遵循以下 Markdown 格式输出，确保内容结构清晰、突出关键信息。
 
 审查维度：Bug 风险 | 性能问题 | 安全隐患 | 代码规范 | 最佳实践
 
@@ -103,17 +118,17 @@ async def review_code_stream(code: str, language: str = "Python") -> AsyncGenera
 > | **综合** | **X/10** | 总结一句话 |
 
 ---
-
 待审查代码：
 ```{language}
 {code}
-```"""
+```'''
+        max_tok = 2048
 
     stream = await client.chat.completions.create(
         model="deepseek-v4-pro",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        max_tokens=2048,
+        max_tokens=max_tok,
         stream=True,
     )
 

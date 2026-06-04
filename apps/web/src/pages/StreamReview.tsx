@@ -195,9 +195,10 @@ export default function StreamReview() {
           <Select
             value={language}
             onChange={setLanguage}
-            style={{ width: 130 }}
+            style={{ width: 150 }}
             options={[
               'Python', 'JavaScript', 'TypeScript', 'Java', 'Go', 'Rust', 'C++', 'C',
+              'Vue SFC', 'React JSX', 'React TSX',
             ].map(v => ({ value: v }))}
           />
           <Text type="secondary" style={{ fontSize: 12 }}>选择语言后粘贴代码</Text>

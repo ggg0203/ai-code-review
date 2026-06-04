@@ -47,7 +47,7 @@
 import { ref, onMounted } from 'vue'
 import { API_BASE, getToken } from '../../../api/config'
 
-const languages = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Go', 'Rust', 'C++']
+const languages = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Go', 'Rust', 'C++', 'Vue SFC', 'React JSX', 'React TSX']
 const langIndex = ref(0)
 const code = ref('')
 const reviewing = ref(false)
