@@ -14,6 +14,9 @@ psycopg[binary]==3.3.4
 # PostgreSQL 驱动（预编译版，不需要 C 编译器）
 # 替代 asyncpg，3.3.x 有 cp313 的 wheel
 
+greenlet==3.1.1
+# SQLAlchemy 异步模式必需依赖，提供轻量级协程切换
+
 # ============ 缓存 ============
 redis==5.0.7
 # Redis Python 客户端，用于缓存、会话管理、限流
