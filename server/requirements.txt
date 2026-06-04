@@ -36,4 +36,10 @@ python-multipart==0.0.9
 httpx==0.27.0
 # HTTP 异步客户端，调用外部 API（阿里云百炼、GitHub API 等）
 
+openai>=1.60.0
+# OpenAI 兼容 SDK，调用阿里云百炼等模型
+
+qdrant-client>=1.12.0
+# Qdrant 向量数据库客户端
+
 # 注意：pydantic 由 fastapi 自动安装，不需要单独指定版本

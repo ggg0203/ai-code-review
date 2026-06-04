@@ -14,6 +14,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - ai-code-review-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -32,6 +37,27 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - ai-code-review-network
+
+  backend:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    container_name: ai-code-review-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:your_password_here@postgres:5432/ai_code_review
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ai-code-review-secret-key-change-in-production
+      DASHSCOPE_API_KEY: sk-aea63deef02e4aa189b3fec8ff5ce3fe
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - ai-code-review-network
 
