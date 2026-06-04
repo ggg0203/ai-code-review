@@ -63,7 +63,6 @@ class User(Base):
 
     github_id: Mapped[int | None] = mapped_column(
         nullable=True,
-        unique=True,
         default=None,
         index=True,
     )
