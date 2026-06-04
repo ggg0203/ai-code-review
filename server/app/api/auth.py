@@ -322,18 +322,20 @@ GITHUB_USER_API = "https://api.github.com/user"
 
 
 @router.get("/github/login")
-async def github_login(source: str = "web"):
+async def github_login(source: str = "web", mobile_redirect: str = ""):
     """
     跳转 GitHub OAuth 授权页
-    source=web   → 授权后重定向回 Web 端
-    source=mobile → 授权后重定向回移动端
+    source=web         → 授权后重定向回 Web 端 (localhost:5173)
+    source=mobile      → 授权后重定向回移动端
+    mobile_redirect    → 移动端回调地址（可选，默认 localhost:8080）
     """
     state = secrets.token_urlsafe(32)  # 防 CSRF
+    redirect_info = f"{source}:{mobile_redirect}:{state}" if source == "mobile" else f"web:{state}"
     params = {
         "client_id": settings.GITHUB_CLIENT_ID,
         "redirect_uri": "http://localhost:8000/auth/github/callback",
         "scope": "user:email",
-        "state": f"{source}:{state}",
+        "state": redirect_info,
     }
     qs = "&".join(f"{k}={v}" for k, v in params.items())
     return RedirectResponse(f"{GITHUB_AUTH_URL}?{qs}")
@@ -353,10 +355,13 @@ async def github_callback(
     4. 签发 JWT
     5. 重定向回前端（带上 token）
     """
-    # 解析 source
+    # 解析 state：格式为 "source:..." 或 "web:random"
     source = "web"
-    if ":" in state:
-        source = state.split(":")[0]
+    mobile_url = ""
+    parts = state.split(":") if ":" in state else ["web", state]
+    source = parts[0]
+    if source == "mobile" and len(parts) >= 3:
+        mobile_url = parts[1]  # mobile_redirect URL
 
     # 用 code 换 access_token
     token_resp = httpx.post(
@@ -423,9 +428,10 @@ async def github_callback(
     access_token = create_access_token(data={"sub": user.email})
     refresh_token = create_refresh_token(data={"sub": user.email})
 
-    # 重定向回前端（前端从 URL 参数取 token）
+    # 重定向回前端
     if source == "mobile":
-        redirect_url = f"http://localhost:5173/#/?access_token={access_token}&refresh_token={refresh_token}"
+        base = mobile_url or "http://localhost:8080"
+        redirect_url = f"{base}/#/?access_token={access_token}&refresh_token={refresh_token}"
     else:
         redirect_url = f"http://localhost:5173/login?access_token={access_token}&refresh_token={refresh_token}"
 
