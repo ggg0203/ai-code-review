@@ -84,26 +84,18 @@ jobs:
       - name: TypeScript type check
         run: npx tsc --noEmit
 
-  # ===== 自动部署到阿里云 ECS =====
+  # ===== 部署通知 =====
+  # 说明：ECS (47.76.141.204) 外部 SSH 不通，已改用服务器端 cron 自动拉取部署
+  # 服务器上配置了 /opt/auto-deploy.sh，每分钟检查 Git 更新并自动 docker compose up -d --build
+  # 此步骤仅标记 CI 通过，实际部署由 ECS 上的 cron 任务自动完成
   deploy:
     needs: [backend, web, screen]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.ECS_HOST }}
-          username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
-          script: |
-            # 拉取最新代码
-            if [ -d /root/ai-code-review ]; then
-              cd /root/ai-code-review && git pull origin main
-            else
-              git clone https://github.com/ggg0203/ai-code-review.git /root/ai-code-review
-            fi
-            # 容器化部署
-            cd /root/ai-code-review/docker
-            GITHUB_TOKEN=${{ secrets.GH_TOKEN }} docker compose up -d --build
-            echo "✅ ECS 容器化部署完成"
+      - name: CI Passed - ECS Auto Deploy
+        run: |
+          echo "✅ 所有 CI 检查通过"
+          echo "📦 部署方式: ECS cron 自动拉取 (每分钟检查更新)"
+          echo "📍 目标服务器: 47.76.141.204"
+          echo "🕐 预计生效时间: 1-2 分钟"
