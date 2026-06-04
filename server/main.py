@@ -3,6 +3,12 @@
 AI Code Review Platform - FastAPI 后端入口
 负责启动 Web 服务、挂载路由、配置中间件
 """
+import sys
+import asyncio
+
+# Windows 下强制 SelectorEventLoop，兼容 psycopg 异步模式
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # ========== 1. 导入依赖 ==========
 from fastapi import FastAPI
