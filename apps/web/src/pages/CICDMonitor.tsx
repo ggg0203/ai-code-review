@@ -2,8 +2,8 @@
  * CI/CD 实时监控大屏 — 短轮询 GitHub Actions 真实数据
  */
 import { useState, useEffect, useCallback } from 'react'
-import { Card, Tag, Table, Typography, Spin, Empty, Statistic, message } from 'antd'
-import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { Card, Tag, Table, Typography, Spin, Empty, Statistic, Button, Space, Result } from 'antd'
+import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import client from '../api/client'
 
@@ -83,13 +83,39 @@ function durationChartOption(builds: BuildRecord[]) {
 export default function CICDMonitor() {
   const [data, setData] = useState<CiData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [pollFailCount, setPollFailCount] = useState(0)
 
   const fetchData = useCallback(async () => {
     try {
       const res = await client.get('/ci/status')
       setData(res.data)
-    } catch {
-      // GitHub 不可达时静默
+      setError(null)
+      setPollFailCount(0)
+    } catch (err: any) {
+      // 打印完整错误到控制台方便排查
+      console.error('[CICD] 请求失败:', {
+        message: err?.message,
+        code: err?.code,
+        status: err?.response?.status,
+        data: err?.response?.data,
+        config: err?.config?.url,
+      })
+
+      const status = err?.response?.status
+      const detail = err?.response?.data?.detail || err?.message || '未知错误'
+      if (status === 401) {
+        setError('登录已过期，请重新登录 (Token 无效)')
+      } else if (status === 500) {
+        setError(`服务器错误: ${detail}`)
+      } else if (err?.code === 'ECONNABORTED') {
+        setError('请求超时，请检查网络或后端负载')
+      } else if (!err?.response) {
+        setError(`无法连接到后端 (${err?.code || 'NET_ERR'}): ${err?.message || '请确认 localhost:8000 已启动'}`)
+      } else {
+        setError(`请求失败 (${status}): ${detail}`)
+      }
+      setPollFailCount(c => c + 1)
     } finally {
       setLoading(false)
     }
@@ -97,13 +123,44 @@ export default function CICDMonitor() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // 3 秒短轮询模拟实时
+  // 3 秒短轮询，但连续失败 5 次后停止
   useEffect(() => {
+    if (pollFailCount >= 5) return
     const timer = setInterval(fetchData, 3000)
     return () => clearInterval(timer)
-  }, [fetchData])
+  }, [fetchData, pollFailCount])
 
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '200px auto' }} />
+
+  if (error) return (
+    <div style={{ maxWidth: 500, margin: '100px auto', textAlign: 'center' }}>
+      <Result
+        status="warning"
+        title="CI/CD 数据获取失败"
+        subTitle={error}
+        extra={
+          <Space>
+            {pollFailCount < 5 && (
+              <Button type="primary" onClick={() => { setPollFailCount(0); fetchData(); }}>
+                🔄 立即重试
+              </Button>
+            )}
+            {pollFailCount >= 5 && (
+              <Button type="primary" onClick={() => { setPollFailCount(0); setLoading(true); fetchData(); }}>
+                <ReloadOutlined /> 重新连接
+              </Button>
+            )}
+          </Space>
+        }
+      />
+      {pollFailCount >= 5 && (
+        <Typography.Text type="secondary">
+          连续 {pollFailCount} 次失败，已停止自动轮询。检查后端是否启动、Token 是否有效，然后点击重新连接。
+        </Typography.Text>
+      )}
+    </div>
+  )
+
   if (!data) return <Empty description="暂无 CI 数据" style={{ marginTop: 200 }} />
 
   const columns = [
