@@ -53,7 +53,9 @@ export default function MainLayout() {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    // 使用 window.location.href 强制页面重载，确保 App.tsx 重新读取 localStorage
+    // 用 navigate() 不会触发重载，App.tsx 中缓存的 token 变量仍为旧值导致跳回首页
+    window.location.href = "/login";
   };
 
   return (
