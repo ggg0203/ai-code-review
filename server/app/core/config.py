@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str = ""
     # GitHub Personal Access Token（用于 CI/CD 监控等）
 
+    GITHUB_CLIENT_ID: str = ""
+    # GitHub OAuth App Client ID（单点登录用）
+
+    GITHUB_CLIENT_SECRET: str = ""
+    # GitHub OAuth App Client Secret
+
     # ========== pydantic-settings 配置 ==========
     class Config:
         env_file = ".env"          # 指定 .env 文件路径

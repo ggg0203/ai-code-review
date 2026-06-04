@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-认证 API - 用户注册、登录、Token 刷新
+认证 API - 用户注册、登录、Token 刷新、GitHub OAuth 单点登录
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+import secrets
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
     hash_password,
@@ -304,7 +308,125 @@ async def toggle_user_active(
 @router.get("/admin-only")
 async def admin_only(
     current_user: User = Depends(get_current_user),
-    _: bool = Depends(require_admin),  # require_admin 检查 → 非admin返回403
+    _: bool = Depends(require_admin),
 ):
     """只有管理员能访问"""
     return {"message": f"你好管理员 {current_user.username}"}
+
+
+# ========== 9. GitHub OAuth 单点登录 ==========
+
+GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
+GITHUB_USER_API = "https://api.github.com/user"
+
+
+@router.get("/github/login")
+async def github_login(source: str = "web"):
+    """
+    跳转 GitHub OAuth 授权页
+    source=web   → 授权后重定向回 Web 端
+    source=mobile → 授权后重定向回移动端
+    """
+    state = secrets.token_urlsafe(32)  # 防 CSRF
+    params = {
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "redirect_uri": "http://localhost:8000/auth/github/callback",
+        "scope": "user:email",
+        "state": f"{source}:{state}",
+    }
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    return RedirectResponse(f"{GITHUB_AUTH_URL}?{qs}")
+
+
+@router.get("/github/callback")
+async def github_callback(
+    code: str = Query(...),
+    state: str = Query(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GitHub OAuth 回调
+    1. 用 code 换 access_token
+    2. 拿 access_token 获取 GitHub 用户信息
+    3. 查找或创建本地用户
+    4. 签发 JWT
+    5. 重定向回前端（带上 token）
+    """
+    # 解析 source
+    source = "web"
+    if ":" in state:
+        source = state.split(":")[0]
+
+    # 用 code 换 access_token
+    token_resp = httpx.post(
+        GITHUB_TOKEN_URL,
+        data={
+            "client_id": settings.GITHUB_CLIENT_ID,
+            "client_secret": settings.GITHUB_CLIENT_SECRET,
+            "code": code,
+        },
+        headers={"Accept": "application/json"},
+        timeout=10,
+    )
+    if token_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="GitHub Token 交换失败")
+    gh_token = token_resp.json().get("access_token")
+    if not gh_token:
+        raise HTTPException(status_code=400, detail="未获取到 GitHub Token")
+
+    # 用 access_token 获取 GitHub 用户信息
+    user_resp = httpx.get(
+        GITHUB_USER_API,
+        headers={"Authorization": f"Bearer {gh_token}"},
+        timeout=10,
+    )
+    if user_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail="GitHub 用户信息获取失败")
+    gh_user = user_resp.json()
+    gh_id = gh_user["id"]
+    gh_login = gh_user["login"]
+    gh_email = gh_user.get("email") or f"{gh_login}@github.user"
+    gh_avatar = gh_user.get("avatar_url", "")
+
+    # 查找或创建用户
+    # 先按 github_id 查
+    result = await db.execute(select(User).where(User.github_id == gh_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # 再按邮箱查（已有邮箱注册的账号）
+        result = await db.execute(select(User).where(User.email == gh_email))
+        user = result.scalar_one_or_none()
+
+    if user:
+        # 已有用户：绑定 github_id（如果还没绑定）
+        if user.github_id is None:
+            user.github_id = gh_id
+        if not user.avatar_url and gh_avatar:
+            user.avatar_url = gh_avatar
+    else:
+        # 新建用户
+        user = User(
+            username=gh_login,
+            email=gh_email,
+            hashed_password=hash_password(secrets.token_urlsafe(16)),  # 随机密码
+            avatar_url=gh_avatar,
+            github_id=gh_id,
+        )
+        db.add(user)
+
+    await db.commit()
+    await db.refresh(user)
+
+    # 签发 JWT
+    access_token = create_access_token(data={"sub": user.email})
+    refresh_token = create_refresh_token(data={"sub": user.email})
+
+    # 重定向回前端（前端从 URL 参数取 token）
+    if source == "mobile":
+        redirect_url = f"http://localhost:5173/#/?access_token={access_token}&refresh_token={refresh_token}"
+    else:
+        redirect_url = f"http://localhost:5173/login?access_token={access_token}&refresh_token={refresh_token}"
+
+    return RedirectResponse(redirect_url)

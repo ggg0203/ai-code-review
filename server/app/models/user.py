@@ -61,6 +61,14 @@ class User(Base):
     )
     # 存的是哈希后的密码，不是明文！
 
+    github_id: Mapped[int | None] = mapped_column(
+        nullable=True,
+        unique=True,
+        default=None,
+        index=True,
+    )
+    # GitHub OAuth 用户 ID，邮箱注册用户此字段为 None
+
     # ===== 用户信息 =====
     avatar_url: Mapped[str | None] = mapped_column(
         String(500),

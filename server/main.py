@@ -47,7 +47,19 @@ async def lifespan(app: FastAPI):
         # Base.metadata.create_all: 扫描所有继承 Base 的类
         # 在数据库中自动创建对应的表（已存在的表不会重复创建）
 
-        # 增量迁移：为已有 reviews 表新增 code_snippet 列
+    # 增量迁移：为已有 users 表新增 github_id 列
+    from sqlalchemy import text as sa_text
+    result = await conn.execute(
+        sa_text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='users' AND column_name='github_id'"
+        )
+    )
+    if not result.fetchone():
+        await conn.execute(sa_text("ALTER TABLE users ADD COLUMN github_id BIGINT UNIQUE"))
+        print("✅ 已迁移：users 表新增 github_id 列")
+
+    # 增量迁移：为已有 reviews 表新增 code_snippet 列
         from sqlalchemy import text as sa_text
         result = await conn.execute(
             sa_text(

@@ -1,16 +1,32 @@
 /**
- * 登录页面
+ * 登录页面 — 邮箱密码 + GitHub OAuth 单点登录
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, Input, Button, Card, message } from "antd";
-import { UserOutlined, LockOutlined } from "@ant-design/icons";
+import { UserOutlined, LockOutlined, GithubOutlined } from "@ant-design/icons";
 import { useAuthStore } from "../stores/auth";
 import { Divider } from 'antd'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const { fetchUser } = useAuthStore();
+  const [searchParams] = useSearchParams();
+
+  // 处理 GitHub OAuth 回调：从 URL 取 token 自动登录
+  useEffect(() => {
+    const accessToken = searchParams.get('access_token')
+    const refreshToken = searchParams.get('refresh_token')
+    if (accessToken && refreshToken) {
+      localStorage.setItem('access_token', accessToken)
+      localStorage.setItem('refresh_token', refreshToken)
+      window.location.href = '/projects'
+    }
+  }, [searchParams])
+
+  const handleGithubLogin = () => {
+    window.location.href = 'http://localhost:8000/auth/github/login?source=web'
+  }
 
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
@@ -19,7 +35,6 @@ export default function Login() {
       await login(values.email, values.password);
       await fetchUser();
       message.success("登录成功，即将跳转");
-      // 用 window.location 强制刷新，确保 token 被 App.tsx 正确读取
       setTimeout(() => { window.location.href = "/" }, 500);
     } catch (err: any) {
       console.error('登录错误:', err);
@@ -60,6 +75,26 @@ export default function Login() {
             </Button>
           </Form.Item>
         </Form>
+
+        <Divider plain style={{ fontSize: 13, color: "#999" }}>
+          第三方登录
+        </Divider>
+
+        <Button
+          block
+          size="large"
+          icon={<GithubOutlined />}
+          onClick={handleGithubLogin}
+          style={{
+            background: '#24292e',
+            color: '#fff',
+            border: 'none',
+            height: 44,
+          }}
+        >
+          GitHub 登录
+        </Button>
+
         <Divider plain style={{ fontSize: 13, color: "#999" }}>
           没有账号?
         </Divider>
