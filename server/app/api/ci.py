@@ -187,7 +187,20 @@ def _refresh_cache():
         time.sleep(60)  # 每 60 秒刷新一次
 
 
-# 启动后台刷新线程
+# 模块加载时立即执行首次刷新（不等待后台循环）
+try:
+    _initial_builds, _initial_rate, _initial_avg = _fetch_github_sync()
+    _cache_data = {
+        "success_rate": _initial_rate,
+        "avg_duration": _initial_avg,
+        "total_runs": len(_initial_builds),
+        "builds": _initial_builds,
+    }
+    _cache_ready = bool(_initial_builds)
+except Exception:
+    pass
+
+# 启动后台定时刷新
 _refresh_thread = threading.Thread(target=_refresh_cache, daemon=True, name="ci-cache-refresh")
 _refresh_thread.start()
 
